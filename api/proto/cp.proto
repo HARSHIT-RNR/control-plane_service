@@ -1,0 +1,500 @@
+syntax = "proto3";
+
+package cp;
+
+// The go_package option specifies the import path for the generated Go code.
+option go_package = "control-plane_service/api/proto/pb;pb";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// ===================================================================
+// Service: UserService (Identity & Role Management)
+//
+// Manages the core data models: Users, Roles, and their relationships
+// to Tenants. This is the source of truth for all identity information.
+// ===================================================================
+service UserService {
+  // Creates the very first user (the admin) for a newly provisioned tenant.
+  // This is the gRPC method that consumes the Kafka event in Step 10 of the onboarding flow.
+  rpc CreateInitialAdmin(CreateInitialAdminRequest) returns (User);
+
+  // --- Standard User Management CRUD ---
+  // Creates a new user within an existing tenant (e.g., an employee).
+  rpc CreateUser(CreateUserRequest) returns (User);
+  rpc GetUser(GetUserRequest) returns (User);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc UpdateUser(UpdateUserRequest) returns (User);
+  rpc DeleteUser(DeleteUserRequest) returns (google.protobuf.Empty);
+  
+  // NEW: Invite a new user to the tenant. This creates the user in a PENDING state
+  // and triggers an invitation email flow.
+  rpc InviteUser(InviteUserRequest) returns (google.protobuf.Empty);
+
+
+  // --- ENHANCED: Role & Permission Management (RBAC) ---
+  rpc CreateRole(CreateRoleRequest) returns (Role);
+  rpc GetRole(GetRoleRequest) returns (Role);
+  rpc ListRoles(ListRolesRequest) returns (ListRolesResponse);
+  rpc UpdateRole(UpdateRoleRequest) returns (Role);
+  rpc DeleteRole(DeleteRoleRequest) returns (google.protobuf.Empty);
+
+  rpc AssignRoleToUser(AssignRoleToUserRequest) returns (google.protobuf.Empty);
+  rpc RevokeRoleFromUser(RevokeRoleFromUserRequest) returns (google.protobuf.Empty);
+  rpc ListUserRoles(ListUserRolesRequest) returns (ListUserRolesResponse);
+}
+
+// ===================================================================
+// Core Message Definitions
+// ===================================================================
+
+// Role now includes a list of permission strings.
+message Role {
+  string role_id = 1;      // e.g., "tenant-admin", "manager", "viewer"
+  string tenant_id = 2;    // Roles are scoped to a tenant
+  string name = 3;         // e.g., "Tenant Administrator"
+  string description = 4;
+  repeated string permissions = 5; // e.g., "users:create", "invoices:read"
+}
+
+// Enum to track the user's state through the onboarding and lifecycle.
+enum UserStatus {
+  USER_STATUS_UNSPECIFIED = 0;
+  PENDING_SETUP = 1;      // Initial state for admin user after Step 10.
+  PENDING_INVITE = 2;     // State for a user who has been invited but not registered.
+  USER_ACTIVE = 3;             // Password has been set. User can log in.
+  USER_SUSPENDED = 4;          // Temporarily disabled by an admin.
+}
+
+enum RoleType {
+  ROLE_TYPE_UNSPECIFIED = 0;
+  TENANT_ADMIN = 1; // Full access within their tenant
+  USER = 2;         // Regular user with limited permissions
+}
+
+enum auth_status {
+  STATUS_UNSPECIFIED = 0;
+  ACTIVE = 1;
+  INACTIVE = 2;
+}
+
+message User {
+  string user_id = 1;      // UUID for the user
+  string full_name = 2;
+  string email = 3;
+
+  // --- ERP Specific Fields ---
+  string employee_id = 4;    // Employee ID, critical for ERP integration.
+  string department_id = 5;  // Foreign key to a 'departments' table (in another service)
+  string designation_id = 6; // Foreign key to a 'designations' table (in another service)
+  string phone_number = 7;   // Optional contact number.
+  string job_title = 8;      // e.g., "Machine Operator", "QA Inspector"
+
+  bool email_verified = 9;
+  UserStatus status = 10;   // Tracks the user's state in the onboarding process
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+  google.protobuf.Timestamp last_login_at = 13;
+}
+
+// --- UserService Messages ---
+
+message CreateInitialAdminRequest {
+  string tenant_id = 1;
+  string admin_email = 2;
+  string admin_full_name = 3;
+}
+
+message InviteUserRequest {
+  string tenant_id = 1;
+  string email = 2;
+  string full_name = 3;
+  repeated string role_ids = 4;
+  
+  // --- ERP Specific Fields ---
+  string employee_id = 5;
+  string department_id = 6;
+  string designation_id = 7;
+  string job_title = 8;
+  string phone_number = 9;
+}
+
+
+message CreateUserRequest {
+  string tenant_id = 1;
+  string email = 2;
+  string full_name = 3;
+  repeated string role_ids = 4;
+  
+  // --- ERP Specific Fields for User Creation ---
+  string employee_id = 5;
+  string department_id = 6;
+  string designation_id = 7;
+  string job_title = 8;
+  string phone_number = 9;
+  string password = 10; // For creating a user directly with a password
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message ListUsersRequest {
+  string tenant_id = 1;
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListUsersResponse {
+  repeated User users = 1;
+  string next_page_token = 2;
+}
+
+message UpdateUserRequest {
+  string user_id = 1;
+  string full_name = 2;
+
+  // --- ERP Specific Fields for User Update ---
+  string employee_id = 3;
+  string department_id = 4;
+  string designation_id = 5;
+  string job_title = 6;
+  string phone_number = 7;
+}
+
+message DeleteUserRequest {
+  string user_id = 1;
+}
+
+// --- Role Messages ---
+
+message CreateRoleRequest {
+  string tenant_id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string permissions = 4;
+}
+
+message GetRoleRequest {
+  string role_id = 1;
+}
+
+message ListRolesRequest {
+  string tenant_id = 1;
+}
+
+message ListRolesResponse {
+  repeated Role roles = 1;
+}
+
+message UpdateRoleRequest {
+  string role_id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string permissions = 4;
+}
+
+message DeleteRoleRequest {
+  string role_id = 1;
+}
+
+message AssignRoleToUserRequest {
+  string user_id = 1;
+  string tenant_id = 2;
+  string role_id = 3;
+}
+
+message RevokeRoleFromUserRequest {
+  string user_id = 1;
+  string tenant_id = 2;
+  string role_id = 3;
+}
+
+message ListUserRolesRequest {
+  string user_id = 1;
+  string tenant_id = 2;
+}
+
+message ListUserRolesResponse {
+  repeated Role roles = 1;
+}
+
+
+// ===================================================================
+// Service: OrganizationService (NEW)
+//
+// Manages organizational structure entities like Departments and Designations.
+// These are managed here but linked to users in the UserService.
+// ==========================r=========================================
+service OrganizationService {
+  // --- Designation Management ---
+  rpc CreateDesignation(CreateDesignationRequest) returns (DesignationResponse);
+  rpc GetDesignation(GetDesignationRequest) returns (DesignationResponse);
+  rpc UpdateDesignation(UpdateDesignationRequest) returns (DesignationResponse);
+  rpc DeleteDesignation(DeleteDesignationRequest) returns (DeleteDesignationResponse);
+  rpc ListDesignations(ListDesignationsRequest) returns (ListDesignationsResponse);
+
+  // --- Department Management ---
+  rpc CreateDepartment(CreateDepartmentRequest) returns (DepartmentResponse);
+  rpc GetDepartment(GetDepartmentRequest) returns (DepartmentResponse);
+  rpc UpdateDepartment(UpdateDepartmentRequest) returns (DepartmentResponse);
+  rpc DeleteDepartment(DeleteDepartmentRequest) returns (DeleteDepartmentResponse);
+  rpc ListDepartments(ListDepartmentsRequest) returns (ListDepartmentsResponse);
+}
+
+// ===================================================================
+// Organization Structure Messages (NEW)
+// ===================================================================
+
+// --- Designation Messages ---
+message Designation {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message CreateDesignationRequest {
+  string name = 1;
+  string description = 2;
+}
+
+message GetDesignationRequest {
+  string id = 1;
+}
+
+message UpdateDesignationRequest {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+}
+
+message DeleteDesignationRequest {
+  string id = 1;
+}
+
+message ListDesignationsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message DesignationResponse {
+  Designation designation = 1;
+}
+
+message ListDesignationsResponse {
+  repeated Designation designations = 1;
+  int32 total_count = 2;
+}
+
+message DeleteDesignationResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+
+// --- Department Messages ---
+message Department {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  google.protobuf.Timestamp created_at = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message CreateDepartmentRequest {
+  string name = 1;
+  string description = 2;
+}
+
+message GetDepartmentRequest {
+  string id = 1;
+}
+
+message UpdateDepartmentRequest {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+}
+
+message DeleteDepartmentRequest {
+  string id = 1;
+}
+
+message ListDepartmentsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message DepartmentResponse {
+  Department department = 1;
+}
+
+message ListDepartmentsResponse {
+  repeated Department departments = 1;
+  int32 total_count = 2;
+}
+
+message DeleteDepartmentResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+
+// ===================================================================
+// Service: AuthnService (Authentication)
+//
+// Handles all public-facing and internal authentication concerns,
+// including token issuance and password management.
+// ===================================================================
+service AuthnService {
+  // Sets the initial password for an admin user using a secure, single-use token.
+  // This is the gRPC method called in Step 12 of the onboarding flow.
+  rpc SetInitialPassword(SetInitialPasswordRequest) returns (google.protobuf.Empty);
+  
+  // NEW: Allows an invited user to complete registration by setting their password.
+  rpc RegisterInvitedUser(RegisterInvitedUserRequest) returns (LoginResponse);
+
+  // A standard login endpoint for users who have already set their password.
+  rpc Login(LoginRequest) returns (LoginResponse);
+  
+  // Logs a user out, potentially invalidating their token via a blocklist.
+  rpc Logout(LogoutRequest) returns (google.protobuf.Empty);
+
+  // Uses a valid refresh token to issue a new access token.
+  rpc RefreshToken(RefreshTokenRequest) returns (LoginResponse);
+
+  // A standard flow for users who have forgotten their password.
+  rpc ForgotPassword(ForgotPasswordRequest) returns (google.protobuf.Empty);
+
+  // Resets a user's password using a token from the ForgotPassword flow.
+  rpc ResetPassword(ResetPasswordRequest) returns (google.protobuf.Empty);
+  
+  // NEW: Confirms the current user's password before a sensitive action.
+  rpc ConfirmPassword(ConfirmPasswordRequest) returns (ConfirmPasswordResponse);
+  
+  // NEW: Validates an access token's integrity and expiration.
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+
+  // Email Verification Flow
+  rpc RequestEmailVerification(RequestEmailVerificationRequest) returns (google.protobuf.Empty);
+  rpc VerifyEmail(VerifyEmailRequest) returns (google.protobuf.Empty);
+
+  // --- Internal RPC ---
+  // This is called internally by the control-plane after creating the initial admin.
+  // This action corresponds to Step 11 of the onboarding flow.
+  rpc GeneratePasswordSetupToken(GeneratePasswordSetupTokenRequest) returns (GeneratePasswordSetupTokenResponse);
+}
+
+// --- AuthnService Messages ---
+
+message SetInitialPasswordRequest {
+  string setup_token = 1;   // The single-use token from the setup email
+  string new_password = 2;
+}
+
+message RegisterInvitedUserRequest {
+  string invitation_token = 1;
+  string full_name = 2; // User confirms/sets their name
+  string password = 3;
+}
+
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+  // User must specify which tenant they are logging into.
+  string tenant_identifier = 3;
+}
+
+message LoginResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  User user = 3;
+}
+
+message LogoutRequest {
+  string access_token = 1; // Token to invalidate
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message ForgotPasswordRequest {
+  string email = 1;
+  string tenant_identifier = 2;
+}
+
+message ResetPasswordRequest {
+  string reset_token = 1;
+  string new_password = 2;
+}
+
+
+message ConfirmPasswordRequest {
+    string access_token = 1; // User must be logged in
+    string password = 2;     // The password to confirm
+}
+
+message ConfirmPasswordResponse {
+    bool confirmed = 1;
+}
+
+message ValidateTokenRequest {
+    string access_token = 1;
+}
+
+message ValidateTokenResponse {
+    bool valid = 1;
+    string user_id = 2;
+    string tenant_id = 3;
+}
+
+message RequestEmailVerificationRequest {
+  string user_id = 1;
+}
+
+message VerifyEmailRequest {
+  string verification_token = 1;
+}
+
+
+message GeneratePasswordSetupTokenRequest {
+  string user_id = 1;
+  string tenant_id = 2;
+  string email = 3;
+}
+
+message GeneratePasswordSetupTokenResponse {
+  string setup_token = 1; // The token to be sent in the setup email
+}
+
+
+
+// ===================================================================
+// Service: AuthzService (Authorization)
+//
+// Provides a high-speed, internal-only endpoint for other microservices to
+// check user permissions. It acts as a facade in front of OPA.
+// ===================================================================
+service AuthzService {
+  // The primary authorization endpoint. Checks if a user (identified by
+  // their access token) is allowed to perform a specific action on a resource.
+  rpc CheckAccess(CheckAccessRequest) returns (CheckAccessResponse);
+}
+
+// --- AuthzService Messages ---
+
+message CheckAccessRequest {
+  string access_token = 1; // The JWT of the user making the request
+  string action = 2;       // e.g., "read", "create", "delete"
+  string resource = 3;     // e.g., "invoice", "customer:123"
+}
+
+message CheckAccessResponse {
+  bool allowed = 1;
+  string reason = 2; // Optional: reason for denial, for logging or debugging
+}
+

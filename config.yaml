@@ -1,0 +1,19 @@
+# Server configuration
+SERVER_PORT: "50051"
+
+# Database configuration
+DB_HOST: "localhost"
+DB_PORT: "5432"
+DB_USER: "postgres"
+DB_PASSWORD: "2120"
+DB_NAME: "cp_db"
+DB_SSL_MODE: "disable" # use "require" for production with SSL
+
+# Kafka configuration
+KAFKA_BROKERS: "localhost:9092"
+
+# Token configuration
+# IMPORTANT: Use a secure, randomly generated 32-character string for production.
+TOKEN_SYMMETRIC_KEY: "a_very_secret_key_that_is_32_chars_long"
+ACCESS_TOKEN_DURATION: "15m"  # 15 minutes
+REFRESH_TOKEN_DURATION: "24h" # 24 hours
