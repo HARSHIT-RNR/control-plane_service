@@ -2,24 +2,22 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"cp_service/internal/adapters/database/db"
 	"cp_service/internal/core/repository"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type roleRepository struct {
-	db      *sql.DB
 	queries *db.Queries
 }
 
 // NewRoleRepository creates a new role repository implementation
-func NewRoleRepository(database *sql.DB, queries *db.Queries) repository.RoleRepository {
+func NewRoleRepository(queries *db.Queries) repository.RoleRepository {
 	return &roleRepository{
-		db:      database,
 		queries: queries,
 	}
 }
@@ -35,7 +33,7 @@ func (r *roleRepository) CreateRole(ctx context.Context, params db.CreateRolePar
 func (r *roleRepository) GetRoleByID(ctx context.Context, id uuid.UUID) (db.Role, error) {
 	role, err := r.queries.GetRoleByID(ctx, pgUUID(id))
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if err == pgx.ErrNoRows {
 			return db.Role{}, fmt.Errorf("role not found")
 		}
 		return db.Role{}, fmt.Errorf("failed to get role: %w", err)
@@ -84,7 +82,17 @@ func (r *roleRepository) RevokeRoleFromUser(ctx context.Context, params db.Revok
 }
 
 func (r *roleRepository) ListUserRoles(ctx context.Context, userID uuid.UUID) ([]db.Role, error) {
-	roles, err := r.queries.ListUserRoles(ctx, pgUUID(userID))
+	// GetUserRoles needs user_id and tenant_id, but we only have user_id here
+	// We need to get the user first to know their tenant
+	user, err := r.queries.GetUserByID(ctx, pgUUID(userID))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	roles, err := r.queries.GetUserRoles(ctx, db.GetUserRolesParams{
+		UserID:   pgUUID(userID),
+		TenantID: user.TenantID,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list user roles: %w", err)
 	}

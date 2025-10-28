@@ -2,25 +2,22 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"cp_service/internal/adapters/database/db"
 	"cp_service/internal/core/repository"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5"
 )
 
 type userRepository struct {
-	db      *sql.DB
 	queries *db.Queries
 }
 
 // NewUserRepository creates a new user repository implementation
-func NewUserRepository(database *sql.DB, queries *db.Queries) repository.UserRepository {
+func NewUserRepository(queries *db.Queries) repository.UserRepository {
 	return &userRepository{
-		db:      database,
 		queries: queries,
 	}
 }
@@ -44,7 +41,7 @@ func (r *userRepository) CreateInitialAdmin(ctx context.Context, params db.Creat
 func (r *userRepository) GetUserByID(ctx context.Context, id uuid.UUID) (db.User, error) {
 	user, err := r.queries.GetUserByID(ctx, pgUUID(id))
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if err == pgx.ErrNoRows {
 			return db.User{}, fmt.Errorf("user not found")
 		}
 		return db.User{}, fmt.Errorf("failed to get user: %w", err)
@@ -58,7 +55,7 @@ func (r *userRepository) GetUserByEmail(ctx context.Context, email string, tenan
 		TenantID: pgUUID(tenantID),
 	})
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if err == pgx.ErrNoRows {
 			return db.User{}, fmt.Errorf("user not found")
 		}
 		return db.User{}, fmt.Errorf("failed to get user by email: %w", err)
@@ -119,34 +116,4 @@ func (r *userRepository) ActivateInvitedUser(ctx context.Context, params db.Acti
 		return fmt.Errorf("failed to activate invited user: %w", err)
 	}
 	return nil
-}
-
-// Helper function to convert uuid.UUID to pgtype.UUID
-func pgUUID(id uuid.UUID) pgtype.UUID {
-	return pgtype.UUID{
-		Bytes: id,
-		Valid: true,
-	}
-}
-
-// Helper function to convert *uuid.UUID to pgtype.UUID
-func pgUUIDPtr(id *uuid.UUID) pgtype.UUID {
-	if id == nil {
-		return pgtype.UUID{Valid: false}
-	}
-	return pgtype.UUID{
-		Bytes: *id,
-		Valid: true,
-	}
-}
-
-// Helper function to convert string to pgtype.Text
-func pgText(s string) pgtype.Text {
-	if s == "" {
-		return pgtype.Text{Valid: false}
-	}
-	return pgtype.Text{
-		String: s,
-		Valid:  true,
-	}
 }

@@ -47,9 +47,8 @@ func NewUserService(
 
 // CreateInitialAdmin creates the first admin user for a new tenant (Step 10 in onboarding)
 func (s *UserService) CreateInitialAdmin(ctx context.Context, tenantID, email, fullName string) (db.User, error) {
-	// Parse tenant ID
-	tenantUUID, err := uuid.Parse(tenantID)
-	if err != nil {
+	// Validate tenant ID
+	if _, err := uuid.Parse(tenantID); err != nil {
 		return db.User{}, fmt.Errorf("invalid tenant ID: %w", err)
 	}
 
@@ -82,7 +81,6 @@ func (s *UserService) CreateInitialAdmin(ctx context.Context, tenantID, email, f
 
 	// Assign admin role to user
 	userID, _ := uuid.FromBytes(user.ID.Bytes[:])
-	roleID, _ := uuid.FromBytes(adminRole.ID.Bytes[:])
 	
 	if err := s.roleRepo.AssignRoleToUser(ctx, db.AssignRoleToUserParams{
 		UserID:   user.ID,
@@ -136,8 +134,8 @@ func (s *UserService) CreateUser(ctx context.Context, params db.CreateUserParams
 
 // InviteUser creates a user with PENDING_INVITE status
 func (s *UserService) InviteUser(ctx context.Context, tenantID, email, fullName string, roleIDs []string) (db.User, error) {
-	tenantUUID, err := uuid.Parse(tenantID)
-	if err != nil {
+	// Validate tenant ID
+	if _, err := uuid.Parse(tenantID); err != nil {
 		return db.User{}, fmt.Errorf("invalid tenant ID: %w", err)
 	}
 
@@ -154,8 +152,8 @@ func (s *UserService) InviteUser(ctx context.Context, tenantID, email, fullName 
 
 	// Assign roles
 	for _, roleID := range roleIDs {
-		roleUUID, err := uuid.Parse(roleID)
-		if err != nil {
+		// Validate role ID
+		if _, err := uuid.Parse(roleID); err != nil {
 			return db.User{}, fmt.Errorf("invalid role ID: %w", err)
 		}
 

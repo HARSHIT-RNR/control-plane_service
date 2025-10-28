@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cp_service/internal/adapters/database/db"
+	events "cp_service/internal/adapters/kafka"
 	"cp_service/internal/adapters/password"
 	"cp_service/internal/adapters/token"
 	"cp_service/internal/core/repository"
@@ -36,6 +37,7 @@ type AuthnService struct {
 	tokenGenerator   token.Generator
 	tokenValidator   token.Validator
 	notificationProd NotificationProducer
+	eventProducer    EventProducer
 	// samlProvider     SAMLProvider // COMMENTED OUT
 }
 
@@ -47,6 +49,7 @@ func NewAuthnService(
 	tokenGen token.Generator,
 	tokenVal token.Validator,
 	notificationProd NotificationProducer,
+	eventProducer EventProducer,
 	// samlProvider SAMLProvider, // COMMENTED OUT
 ) *AuthnService {
 	return &AuthnService{
@@ -56,15 +59,15 @@ func NewAuthnService(
 		tokenGenerator:   tokenGen,
 		tokenValidator:   tokenVal,
 		notificationProd: notificationProd,
+		eventProducer:    eventProducer,
 		// samlProvider:     samlProvider, // COMMENTED OUT
 	}
 }
 
 // GeneratePasswordSetupToken generates a one-time password setup token (Step 12 in onboarding)
 func (s *AuthnService) GeneratePasswordSetupToken(ctx context.Context, userID, tenantID, email string) (string, error) {
-	// Parse user ID
-	uid, err := uuid.Parse(userID)
-	if err != nil {
+	// Validate user ID
+	if _, err := uuid.Parse(userID); err != nil {
 		return "", fmt.Errorf("invalid user ID: %w", err)
 	}
 
@@ -138,7 +141,7 @@ func (s *AuthnService) SetInitialPassword(ctx context.Context, setupToken, newPa
 	}
 
 	// Hash the new password
-	passwordHash, err := s.passwordHasher.HashPassword(newPassword)
+	passwordHash, err := s.passwordHasher.Hash(newPassword)
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -152,9 +155,42 @@ func (s *AuthnService) SetInitialPassword(ctx context.Context, setupToken, newPa
 		return fmt.Errorf("failed to create credential: %w", err)
 	}
 
+	// Get user for tenant info
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get user: %w", err)
+	}
+	tenantID, _ := uuid.FromBytes(user.TenantID.Bytes[:])
+
 	// Update user status to ACTIVE
 	if err := s.userRepo.UpdateUserStatus(ctx, userID, db.UserStatusACTIVE); err != nil {
 		return fmt.Errorf("failed to update user status: %w", err)
+	}
+
+	// Publish status changed event
+	statusEvent := events.UserStatusChangedEvent{
+		UserID:    userID.String(),
+		TenantID:  tenantID.String(),
+		OldStatus: "PENDING_SETUP",
+		NewStatus: "ACTIVE",
+		ChangedBy: "system",
+		Reason:    "Initial password set",
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+	if err := s.eventProducer.PublishUserStatusChanged(ctx, statusEvent); err != nil {
+		fmt.Printf("warning: failed to publish status changed event: %v\n", err)
+	}
+
+	// Publish password changed event
+	passwordEvent := events.PasswordChangedEvent{
+		UserID:    userID.String(),
+		TenantID:  tenantID.String(),
+		ChangedBy: "self",
+		Method:    "initial_setup",
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+	if err := s.eventProducer.PublishPasswordChanged(ctx, passwordEvent); err != nil {
+		fmt.Printf("warning: failed to publish password changed event: %v\n", err)
 	}
 
 	// Delete the used token
@@ -192,7 +228,7 @@ func (s *AuthnService) Login(ctx context.Context, email, password, tenantIdentif
 	}
 
 	// Verify password
-	if err := s.passwordHasher.CheckPassword(password, credential.PasswordHash); err != nil {
+	if err := s.passwordHasher.Compare(credential.PasswordHash, password); err != nil {
 		return "", "", db.User{}, fmt.Errorf("invalid credentials: %w", err)
 	}
 
@@ -202,7 +238,7 @@ func (s *AuthnService) Login(ctx context.Context, email, password, tenantIdentif
 		return "", "", db.User{}, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
-	refreshToken, err = s.tokenGenerator.GenerateRefreshToken(userID.String(), tenantIdentifier)
+	refreshToken, err = s.tokenGenerator.GenerateRefreshToken(userID.String(), tenantIdentifier, email)
 	if err != nil {
 		return "", "", db.User{}, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
@@ -211,6 +247,16 @@ func (s *AuthnService) Login(ctx context.Context, email, password, tenantIdentif
 	if err := s.userRepo.UpdateLastLogin(ctx, userID); err != nil {
 		// Non-critical error, log but don't fail
 		fmt.Printf("warning: failed to update last login: %v\n", err)
+	}
+
+	// Publish login event
+	loginEvent := events.UserLoginEvent{
+		UserID:    userID.String(),
+		TenantID:  tenantIdentifier,
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+	if err := s.eventProducer.PublishUserLogin(ctx, loginEvent); err != nil {
+		fmt.Printf("warning: failed to publish login event: %v\n", err)
 	}
 
 	return accessToken, refreshToken, user, nil
@@ -356,7 +402,7 @@ func (s *AuthnService) RegisterInvitedUser(ctx context.Context, invitationToken,
 	}
 
 	// Hash password
-	passwordHash, err := s.passwordHasher.HashPassword(password)
+	passwordHash, err := s.passwordHasher.Hash(password)
 	if err != nil {
 		return "", "", db.User{}, fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -391,7 +437,7 @@ func (s *AuthnService) RegisterInvitedUser(ctx context.Context, invitationToken,
 		return "", "", db.User{}, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
-	refreshToken, err = s.tokenGenerator.GenerateRefreshToken(userID.String(), tenantID.String())
+	refreshToken, err = s.tokenGenerator.GenerateRefreshToken(userID.String(), tenantID.String(), user.Email)
 	if err != nil {
 		return "", "", db.User{}, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
@@ -437,7 +483,7 @@ func (s *AuthnService) ConfirmPassword(ctx context.Context, userID, password str
 		return fmt.Errorf("credential not found: %w", err)
 	}
 
-	if err := s.passwordHasher.CheckPassword(password, credential.PasswordHash); err != nil {
+	if err := s.passwordHasher.Compare(credential.PasswordHash, password); err != nil {
 		return fmt.Errorf("incorrect password: %w", err)
 	}
 

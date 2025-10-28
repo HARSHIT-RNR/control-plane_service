@@ -31,6 +31,7 @@ type Querier interface {
 	CreateToken(ctx context.Context, arg CreateTokenParams) error
 	// --- User Management Queries ---
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
+	DeleteAllUserTokens(ctx context.Context, userID pgtype.UUID) error
 	DeleteCredential(ctx context.Context, userID pgtype.UUID) error
 	DeleteDepartment(ctx context.Context, id pgtype.UUID) error
 	DeleteDesignation(ctx context.Context, id pgtype.UUID) error

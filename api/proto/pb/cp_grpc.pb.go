@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v6.30.2
-// source: cp.proto
+// source: api/proto/cp.proto
 
 package pb
 
@@ -678,7 +678,7 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "cp.proto",
+	Metadata: "api/proto/cp.proto",
 }
 
 const (
@@ -1140,7 +1140,7 @@ var OrganizationService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "cp.proto",
+	Metadata: "api/proto/cp.proto",
 }
 
 const (
@@ -1702,7 +1702,7 @@ var AuthnService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "cp.proto",
+	Metadata: "api/proto/cp.proto",
 }
 
 const (
@@ -1822,5 +1822,5 @@ var AuthzService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "cp.proto",
+	Metadata: "api/proto/cp.proto",
 }

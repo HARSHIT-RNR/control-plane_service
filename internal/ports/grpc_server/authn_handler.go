@@ -64,17 +64,17 @@ func (h *AuthnHandler) SetInitialPassword(ctx context.Context, req *pb.SetInitia
 	return &emptypb.Empty{}, nil
 }
 
-func (h *AuthnHandler) RefreshToken(ctx context.Context, req *pb.RefreshTokenRequest) (*pb.RefreshTokenResponse, error) {
+func (h *AuthnHandler) RefreshToken(ctx context.Context, req *pb.RefreshTokenRequest) (*pb.LoginResponse, error) {
 	accessToken, err := h.authnService.RefreshToken(ctx, req.RefreshToken)
 	if err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
 
-	return &pb.RefreshTokenResponse{AccessToken: accessToken}, nil
+	return &pb.LoginResponse{AccessToken: accessToken}, nil
 }
 
 func (h *AuthnHandler) ValidateToken(ctx context.Context, req *pb.ValidateTokenRequest) (*pb.ValidateTokenResponse, error) {
-	claims, err := h.authnService.ValidateToken(ctx, req.Token)
+	claims, err := h.authnService.ValidateToken(ctx, req.AccessToken)
 	if err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
@@ -83,7 +83,6 @@ func (h *AuthnHandler) ValidateToken(ctx context.Context, req *pb.ValidateTokenR
 		Valid:    true,
 		UserId:   claims.UserID,
 		TenantId: claims.TenantID,
-		Email:    claims.Email,
 	}, nil
 }
 
@@ -119,7 +118,13 @@ func (h *AuthnHandler) RegisterInvitedUser(ctx context.Context, req *pb.Register
 }
 
 func (h *AuthnHandler) Logout(ctx context.Context, req *pb.LogoutRequest) (*emptypb.Empty, error) {
-	if err := h.authnService.Logout(ctx, req.UserId); err != nil {
+	// Extract user_id from access_token
+	claims, err := h.authnService.ValidateToken(ctx, req.AccessToken)
+	if err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+	
+	if err := h.authnService.Logout(ctx, claims.UserID); err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
 
@@ -127,12 +132,18 @@ func (h *AuthnHandler) Logout(ctx context.Context, req *pb.LogoutRequest) (*empt
 }
 
 func (h *AuthnHandler) ConfirmPassword(ctx context.Context, req *pb.ConfirmPasswordRequest) (*pb.ConfirmPasswordResponse, error) {
-	err := h.authnService.ConfirmPassword(ctx, req.UserId, req.Password)
+	// Extract user_id from access_token
+	claims, err := h.authnService.ValidateToken(ctx, req.AccessToken)
 	if err != nil {
-		return &pb.ConfirmPasswordResponse{Valid: false}, nil
+		return nil, helpers.ToGRPCError(err)
+	}
+	
+	err = h.authnService.ConfirmPassword(ctx, claims.UserID, req.Password)
+	if err != nil {
+		return &pb.ConfirmPasswordResponse{Confirmed: false}, nil
 	}
 
-	return &pb.ConfirmPasswordResponse{Valid: true}, nil
+	return &pb.ConfirmPasswordResponse{Confirmed: true}, nil
 }
 
 func (h *AuthnHandler) GeneratePasswordSetupToken(ctx context.Context, req *pb.GeneratePasswordSetupTokenRequest) (*pb.GeneratePasswordSetupTokenResponse, error) {
@@ -141,5 +152,5 @@ func (h *AuthnHandler) GeneratePasswordSetupToken(ctx context.Context, req *pb.G
 		return nil, helpers.ToGRPCError(err)
 	}
 
-	return &pb.GeneratePasswordSetupTokenResponse{Token: token}, nil
+	return &pb.GeneratePasswordSetupTokenResponse{SetupToken: token}, nil
 }

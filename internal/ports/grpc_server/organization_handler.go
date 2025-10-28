@@ -2,12 +2,14 @@ package grpc_server
 
 import (
 	"context"
+	"errors"
 
 	pb "cp_service/api/proto/pb"
 	"cp_service/internal/adapters/database/db"
 	"cp_service/internal/adapters/helpers"
 	"cp_service/internal/core/services"
 
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -22,11 +24,20 @@ func NewOrganizationHandler(orgService *services.OrganizationService) *Organizat
 
 // Department handlers
 
-func (h *OrganizationHandler) CreateDepartment(ctx context.Context, req *pb.CreateDepartmentRequest) (*pb.Department, error) {
+func (h *OrganizationHandler) CreateDepartment(ctx context.Context, req *pb.CreateDepartmentRequest) (*pb.DepartmentResponse, error) {
+	// Generate new UUID for department
+	newID := uuid.New()
+	
+	// Parse tenant_id from request
+	tenantID, err := uuid.Parse(req.TenantId)
+	if err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+	
 	params := db.CreateDepartmentParams{
-		ID:       helpers.StringToPgUUID(req.Id),
+		ID:       helpers.UUIDToPgUUID(newID),
 		Name:     req.Name,
-		TenantID: helpers.StringToPgUUID(req.TenantId),
+		TenantID: helpers.UUIDToPgUUID(tenantID),
 	}
 
 	if req.Description != "" {
@@ -38,20 +49,26 @@ func (h *OrganizationHandler) CreateDepartment(ctx context.Context, req *pb.Crea
 		return nil, helpers.ToGRPCError(err)
 	}
 
-	return dbDepartmentToProto(&dept), nil
+	return &pb.DepartmentResponse{Department: dbDepartmentToProto(&dept)}, nil
 }
 
-func (h *OrganizationHandler) GetDepartment(ctx context.Context, req *pb.GetDepartmentRequest) (*pb.Department, error) {
+func (h *OrganizationHandler) GetDepartment(ctx context.Context, req *pb.GetDepartmentRequest) (*pb.DepartmentResponse, error) {
 	dept, err := h.orgService.GetDepartment(ctx, req.Id)
 	if err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
 
-	return dbDepartmentToProto(&dept), nil
+	return &pb.DepartmentResponse{Department: dbDepartmentToProto(&dept)}, nil
 }
 
 func (h *OrganizationHandler) ListDepartments(ctx context.Context, req *pb.ListDepartmentsRequest) (*pb.ListDepartmentsResponse, error) {
-	depts, err := h.orgService.ListDepartments(ctx, req.TenantId)
+	// Extract tenant_id from auth context
+	tenantID, ok := ctx.Value("tenant_id").(uuid.UUID)
+	if !ok {
+		return nil, helpers.ToGRPCError(errors.New("tenant_id not found in context"))
+	}
+	
+	depts, err := h.orgService.ListDepartments(ctx, tenantID.String())
 	if err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
@@ -64,9 +81,14 @@ func (h *OrganizationHandler) ListDepartments(ctx context.Context, req *pb.ListD
 	return &pb.ListDepartmentsResponse{Departments: pbDepts}, nil
 }
 
-func (h *OrganizationHandler) UpdateDepartment(ctx context.Context, req *pb.UpdateDepartmentRequest) (*pb.Department, error) {
+func (h *OrganizationHandler) UpdateDepartment(ctx context.Context, req *pb.UpdateDepartmentRequest) (*pb.DepartmentResponse, error) {
+	deptID, err := uuid.Parse(req.Id)
+	if err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+	
 	params := db.UpdateDepartmentParams{
-		ID:   helpers.StringToPgUUID(req.Id),
+		ID:   helpers.UUIDToPgUUID(deptID),
 		Name: req.Name,
 	}
 
@@ -79,7 +101,7 @@ func (h *OrganizationHandler) UpdateDepartment(ctx context.Context, req *pb.Upda
 		return nil, helpers.ToGRPCError(err)
 	}
 
-	return dbDepartmentToProto(&dept), nil
+	return &pb.DepartmentResponse{Department: dbDepartmentToProto(&dept)}, nil
 }
 
 func (h *OrganizationHandler) DeleteDepartment(ctx context.Context, req *pb.DeleteDepartmentRequest) (*pb.DeleteDepartmentResponse, error) {
@@ -92,11 +114,20 @@ func (h *OrganizationHandler) DeleteDepartment(ctx context.Context, req *pb.Dele
 
 // Designation handlers
 
-func (h *OrganizationHandler) CreateDesignation(ctx context.Context, req *pb.CreateDesignationRequest) (*pb.Designation, error) {
+func (h *OrganizationHandler) CreateDesignation(ctx context.Context, req *pb.CreateDesignationRequest) (*pb.DesignationResponse, error) {
+	// Generate new UUID for designation
+	newID := uuid.New()
+	
+	// Parse tenant_id from request
+	tenantID, err := uuid.Parse(req.TenantId)
+	if err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+	
 	params := db.CreateDesignationParams{
-		ID:       helpers.StringToPgUUID(req.Id),
+		ID:       helpers.UUIDToPgUUID(newID),
 		Name:     req.Name,
-		TenantID: helpers.StringToPgUUID(req.TenantId),
+		TenantID: helpers.UUIDToPgUUID(tenantID),
 	}
 
 	if req.Description != "" {
@@ -108,20 +139,26 @@ func (h *OrganizationHandler) CreateDesignation(ctx context.Context, req *pb.Cre
 		return nil, helpers.ToGRPCError(err)
 	}
 
-	return dbDesignationToProto(&desig), nil
+	return &pb.DesignationResponse{Designation: dbDesignationToProto(&desig)}, nil
 }
 
-func (h *OrganizationHandler) GetDesignation(ctx context.Context, req *pb.GetDesignationRequest) (*pb.Designation, error) {
+func (h *OrganizationHandler) GetDesignation(ctx context.Context, req *pb.GetDesignationRequest) (*pb.DesignationResponse, error) {
 	desig, err := h.orgService.GetDesignation(ctx, req.Id)
 	if err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
 
-	return dbDesignationToProto(&desig), nil
+	return &pb.DesignationResponse{Designation: dbDesignationToProto(&desig)}, nil
 }
 
 func (h *OrganizationHandler) ListDesignations(ctx context.Context, req *pb.ListDesignationsRequest) (*pb.ListDesignationsResponse, error) {
-	desigs, err := h.orgService.ListDesignations(ctx, req.TenantId)
+	// Extract tenant_id from auth context
+	tenantID, ok := ctx.Value("tenant_id").(uuid.UUID)
+	if !ok {
+		return nil, helpers.ToGRPCError(errors.New("tenant_id not found in context"))
+	}
+	
+	desigs, err := h.orgService.ListDesignations(ctx, tenantID.String())
 	if err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
@@ -134,9 +171,14 @@ func (h *OrganizationHandler) ListDesignations(ctx context.Context, req *pb.List
 	return &pb.ListDesignationsResponse{Designations: pbDesigs}, nil
 }
 
-func (h *OrganizationHandler) UpdateDesignation(ctx context.Context, req *pb.UpdateDesignationRequest) (*pb.Designation, error) {
+func (h *OrganizationHandler) UpdateDesignation(ctx context.Context, req *pb.UpdateDesignationRequest) (*pb.DesignationResponse, error) {
+	desigID, err := uuid.Parse(req.Id)
+	if err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+	
 	params := db.UpdateDesignationParams{
-		ID:   helpers.StringToPgUUID(req.Id),
+		ID:   helpers.UUIDToPgUUID(desigID),
 		Name: req.Name,
 	}
 
@@ -149,7 +191,7 @@ func (h *OrganizationHandler) UpdateDesignation(ctx context.Context, req *pb.Upd
 		return nil, helpers.ToGRPCError(err)
 	}
 
-	return dbDesignationToProto(&desig), nil
+	return &pb.DesignationResponse{Designation: dbDesignationToProto(&desig)}, nil
 }
 
 func (h *OrganizationHandler) DeleteDesignation(ctx context.Context, req *pb.DeleteDesignationRequest) (*pb.DeleteDesignationResponse, error) {
@@ -165,8 +207,8 @@ func (h *OrganizationHandler) DeleteDesignation(ctx context.Context, req *pb.Del
 func dbDepartmentToProto(dept *db.Department) *pb.Department {
 	pbDept := &pb.Department{
 		Id:       helpers.PgUUIDToString(dept.ID),
-		Name:     dept.Name,
 		TenantId: helpers.PgUUIDToString(dept.TenantID),
+		Name:     dept.Name,
 	}
 
 	if dept.Description.Valid {
@@ -185,8 +227,8 @@ func dbDepartmentToProto(dept *db.Department) *pb.Department {
 func dbDesignationToProto(desig *db.Designation) *pb.Designation {
 	pbDesig := &pb.Designation{
 		Id:       helpers.PgUUIDToString(desig.ID),
-		Name:     desig.Name,
 		TenantId: helpers.PgUUIDToString(desig.TenantID),
+		Name:     desig.Name,
 	}
 
 	if desig.Description.Valid {

@@ -1,18 +1,15 @@
 -- This file is for rolling back the schema changes.
+-- Drop tables in reverse order of creation to respect foreign key constraints
 
-DROP INDEX IF EXISTS idx_user_tenant_roles_role_id;
-DROP INDEX IF EXISTS idx_user_tenant_roles_user_id;
-DROP INDEX IF EXISTS idx_users_email;
+DROP TABLE IF EXISTS tokens CASCADE;
+DROP TABLE IF EXISTS credentials CASCADE;
+DROP TABLE IF EXISTS user_roles CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS roles CASCADE;
+DROP TABLE IF EXISTS designations CASCADE;
+DROP TABLE IF EXISTS departments CASCADE;
 
-ALTER TABLE users DROP CONSTRAINT IF EXISTS fk_designation;
-ALTER TABLE users DROP CONSTRAINT IF EXISTS fk_department;
-
-DROP TABLE IF EXISTS designations;
-DROP TABLE IF EXISTS departments;
-DROP TABLE IF EXISTS user_tenant_roles;
-DROP TABLE IF EXISTS roles;
-DROP TABLE IF EXISTS users;
-
+DROP TYPE IF EXISTS token_scope;
 DROP TYPE IF EXISTS user_status;
 
 DROP EXTENSION IF EXISTS "uuid-ossp";

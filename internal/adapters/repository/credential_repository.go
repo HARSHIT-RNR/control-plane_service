@@ -2,30 +2,28 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"cp_service/internal/adapters/database/db"
 	"cp_service/internal/core/repository"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type credentialRepository struct {
-	db      *sql.DB
 	queries *db.Queries
 }
 
 // NewCredentialRepository creates a new credential repository implementation
-func NewCredentialRepository(database *sql.DB, queries *db.Queries) repository.CredentialRepository {
+func NewCredentialRepository(queries *db.Queries) repository.CredentialRepository {
 	return &credentialRepository{
-		db:      database,
 		queries: queries,
 	}
 }
 
 func (r *credentialRepository) CreateCredential(ctx context.Context, params db.CreateCredentialParams) error {
-	err := r.queries.CreateCredential(ctx, params)
+	_, err := r.queries.CreateCredential(ctx, params)
 	if err != nil {
 		return fmt.Errorf("failed to create credential: %w", err)
 	}
@@ -33,9 +31,9 @@ func (r *credentialRepository) CreateCredential(ctx context.Context, params db.C
 }
 
 func (r *credentialRepository) GetCredentialByUserID(ctx context.Context, userID uuid.UUID) (db.Credential, error) {
-	credential, err := r.queries.GetCredentialByUserID(ctx, pgUUID(userID))
+	credential, err := r.queries.GetCredential(ctx, pgUUID(userID))
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if err == pgx.ErrNoRows {
 			return db.Credential{}, fmt.Errorf("credential not found")
 		}
 		return db.Credential{}, fmt.Errorf("failed to get credential: %w", err)
@@ -70,7 +68,7 @@ func (r *credentialRepository) CreateToken(ctx context.Context, params db.Create
 func (r *credentialRepository) GetToken(ctx context.Context, hash []byte) (db.Token, error) {
 	token, err := r.queries.GetToken(ctx, hash)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if err == pgx.ErrNoRows {
 			return db.Token{}, fmt.Errorf("token not found")
 		}
 		return db.Token{}, fmt.Errorf("failed to get token: %w", err)

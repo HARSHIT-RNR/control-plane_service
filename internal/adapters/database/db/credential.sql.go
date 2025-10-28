@@ -60,6 +60,16 @@ func (q *Queries) CreateToken(ctx context.Context, arg CreateTokenParams) error 
 	return err
 }
 
+const deleteAllUserTokens = `-- name: DeleteAllUserTokens :exec
+DELETE FROM tokens
+WHERE user_id = $1
+`
+
+func (q *Queries) DeleteAllUserTokens(ctx context.Context, userID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteAllUserTokens, userID)
+	return err
+}
+
 const deleteCredential = `-- name: DeleteCredential :exec
 DELETE FROM credentials
 WHERE user_id = $1

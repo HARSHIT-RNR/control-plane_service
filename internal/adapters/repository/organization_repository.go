@@ -2,24 +2,22 @@ package repository
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 
 	"cp_service/internal/adapters/database/db"
 	"cp_service/internal/core/repository"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 type organizationRepository struct {
-	db      *sql.DB
 	queries *db.Queries
 }
 
 // NewOrganizationRepository creates a new organization repository implementation
-func NewOrganizationRepository(database *sql.DB, queries *db.Queries) repository.OrganizationRepository {
+func NewOrganizationRepository(queries *db.Queries) repository.OrganizationRepository {
 	return &organizationRepository{
-		db:      database,
 		queries: queries,
 	}
 }
@@ -35,9 +33,9 @@ func (r *organizationRepository) CreateDepartment(ctx context.Context, params db
 }
 
 func (r *organizationRepository) GetDepartmentByID(ctx context.Context, id uuid.UUID) (db.Department, error) {
-	dept, err := r.queries.GetDepartmentByID(ctx, pgUUID(id))
+	dept, err := r.queries.GetDepartment(ctx, pgUUID(id))
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if err == pgx.ErrNoRows {
 			return db.Department{}, fmt.Errorf("department not found")
 		}
 		return db.Department{}, fmt.Errorf("failed to get department: %w", err)
@@ -46,7 +44,11 @@ func (r *organizationRepository) GetDepartmentByID(ctx context.Context, id uuid.
 }
 
 func (r *organizationRepository) ListDepartments(ctx context.Context, tenantID uuid.UUID) ([]db.Department, error) {
-	depts, err := r.queries.ListDepartments(ctx, pgUUID(tenantID))
+	depts, err := r.queries.ListDepartments(ctx, db.ListDepartmentsParams{
+		TenantID: pgUUID(tenantID),
+		Limit:    100,
+		Offset:   0,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list departments: %w", err)
 	}
@@ -80,9 +82,9 @@ func (r *organizationRepository) CreateDesignation(ctx context.Context, params d
 }
 
 func (r *organizationRepository) GetDesignationByID(ctx context.Context, id uuid.UUID) (db.Designation, error) {
-	desig, err := r.queries.GetDesignationByID(ctx, pgUUID(id))
+	desig, err := r.queries.GetDesignation(ctx, pgUUID(id))
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if err == pgx.ErrNoRows {
 			return db.Designation{}, fmt.Errorf("designation not found")
 		}
 		return db.Designation{}, fmt.Errorf("failed to get designation: %w", err)
@@ -91,7 +93,11 @@ func (r *organizationRepository) GetDesignationByID(ctx context.Context, id uuid
 }
 
 func (r *organizationRepository) ListDesignations(ctx context.Context, tenantID uuid.UUID) ([]db.Designation, error) {
-	desigs, err := r.queries.ListDesignations(ctx, pgUUID(tenantID))
+	desigs, err := r.queries.ListDesignations(ctx, db.ListDesignationsParams{
+		TenantID: pgUUID(tenantID),
+		Limit:    100,
+		Offset:   0,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list designations: %w", err)
 	}

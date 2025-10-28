@@ -22,8 +22,10 @@ CREATE TABLE departments (
     description TEXT,
     tenant_id UUID NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(tenant_id, name)
 );
+CREATE INDEX ON departments (tenant_id);
 
 CREATE TABLE designations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -31,8 +33,10 @@ CREATE TABLE designations (
     description TEXT,
     tenant_id UUID NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(tenant_id, name)
 );
+CREATE INDEX ON designations (tenant_id);
 
 -- Roles Table (RBAC)
 CREATE TABLE roles (

@@ -8,7 +8,7 @@ import (
 	"cp_service/internal/adapters/helpers"
 	"cp_service/internal/core/services"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -33,10 +33,15 @@ func (h *UserHandler) CreateInitialAdmin(ctx context.Context, req *pb.CreateInit
 
 func (h *UserHandler) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.User, error) {
 	// Build params
+	tenantID, err := helpers.StringToPgUUID(req.TenantId)
+	if err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+	
 	params := db.CreateUserParams{
 		FullName: req.FullName,
 		Email:    req.Email,
-		TenantID: helpers.StringToPgUUID(req.TenantId),
+		TenantID: tenantID,
 		Status:   db.UserStatusACTIVE,
 	}
 
@@ -44,16 +49,21 @@ func (h *UserHandler) CreateUser(ctx context.Context, req *pb.CreateUserRequest)
 		params.EmployeeID = helpers.StringToPgText(req.EmployeeId)
 	}
 	if req.DepartmentId != "" {
-		params.DepartmentID = helpers.StringToPgUUID(req.DepartmentId)
+		deptID, err := helpers.StringToPgUUID(req.DepartmentId)
+		if err != nil {
+			return nil, helpers.ToGRPCError(err)
+		}
+		params.DepartmentID = deptID
 	}
 	if req.DesignationId != "" {
-		params.DesignationID = helpers.StringToPgUUID(req.DesignationId)
+		desigID, err := helpers.StringToPgUUID(req.DesignationId)
+		if err != nil {
+			return nil, helpers.ToGRPCError(err)
+		}
+		params.DesignationID = desigID
 	}
 	if req.JobTitle != "" {
 		params.JobTitle = helpers.StringToPgText(req.JobTitle)
-	}
-	if req.PhoneNumber != "" {
-		params.PhoneNumber = helpers.StringToPgText(req.PhoneNumber)
 	}
 
 	user, err := h.userService.CreateUser(ctx, params)
@@ -64,17 +74,17 @@ func (h *UserHandler) CreateUser(ctx context.Context, req *pb.CreateUserRequest)
 	return dbUserToProto(&user), nil
 }
 
-func (h *UserHandler) InviteUser(ctx context.Context, req *pb.InviteUserRequest) (*pb.User, error) {
-	user, err := h.userService.InviteUser(ctx, req.TenantId, req.Email, req.FullName, req.RoleIds)
+func (h *UserHandler) InviteUser(ctx context.Context, req *pb.InviteUserRequest) (*emptypb.Empty, error) {
+	_, err := h.userService.InviteUser(ctx, req.TenantId, req.Email, req.FullName, req.RoleIds)
 	if err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
 
-	return dbUserToProto(&user), nil
+	return &emptypb.Empty{}, nil
 }
 
 func (h *UserHandler) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.User, error) {
-	user, err := h.userService.GetUser(ctx, req.Id)
+	user, err := h.userService.GetUser(ctx, req.UserId)
 	if err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
@@ -83,12 +93,15 @@ func (h *UserHandler) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.
 }
 
 func (h *UserHandler) ListUsers(ctx context.Context, req *pb.ListUsersRequest) (*pb.ListUsersResponse, error) {
-	limit := req.Limit
+	limit := req.PageSize
 	if limit == 0 {
 		limit = 50
 	}
+	
+	// TODO: Handle page_token for pagination
+	offset := int32(0)
 
-	users, err := h.userService.ListUsers(ctx, req.TenantId, limit, req.Offset)
+	users, err := h.userService.ListUsers(ctx, req.TenantId, limit, offset)
 	if err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
@@ -102,22 +115,35 @@ func (h *UserHandler) ListUsers(ctx context.Context, req *pb.ListUsersRequest) (
 }
 
 func (h *UserHandler) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*pb.User, error) {
+	userID, err := helpers.StringToPgUUID(req.UserId)
+	if err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+	
 	params := db.UpdateUserParams{
-		ID:       helpers.StringToPgUUID(req.Id),
+		ID:       userID,
 		FullName: req.FullName,
 	}
 
-	if req.PhoneNumber != "" {
-		params.PhoneNumber = helpers.StringToPgText(req.PhoneNumber)
-	}
 	if req.JobTitle != "" {
 		params.JobTitle = helpers.StringToPgText(req.JobTitle)
 	}
+	if req.EmployeeId != "" {
+		params.EmployeeID = helpers.StringToPgText(req.EmployeeId)
+	}
 	if req.DepartmentId != "" {
-		params.DepartmentID = helpers.StringToPgUUID(req.DepartmentId)
+		deptID, err := helpers.StringToPgUUID(req.DepartmentId)
+		if err != nil {
+			return nil, helpers.ToGRPCError(err)
+		}
+		params.DepartmentID = deptID
 	}
 	if req.DesignationId != "" {
-		params.DesignationID = helpers.StringToPgUUID(req.DesignationId)
+		desigID, err := helpers.StringToPgUUID(req.DesignationId)
+		if err != nil {
+			return nil, helpers.ToGRPCError(err)
+		}
+		params.DesignationID = desigID
 	}
 
 	user, err := h.userService.UpdateUser(ctx, params)
@@ -128,28 +154,28 @@ func (h *UserHandler) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest)
 	return dbUserToProto(&user), nil
 }
 
-func (h *UserHandler) DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) (*pb.DeleteUserResponse, error) {
-	if err := h.userService.DeleteUser(ctx, req.Id); err != nil {
+func (h *UserHandler) DeleteUser(ctx context.Context, req *pb.DeleteUserRequest) (*emptypb.Empty, error) {
+	if err := h.userService.DeleteUser(ctx, req.UserId); err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
 
-	return &pb.DeleteUserResponse{Success: true}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (h *UserHandler) AssignRoleToUser(ctx context.Context, req *pb.AssignRoleToUserRequest) (*pb.AssignRoleToUserResponse, error) {
+func (h *UserHandler) AssignRoleToUser(ctx context.Context, req *pb.AssignRoleToUserRequest) (*emptypb.Empty, error) {
 	if err := h.userService.AssignRoleToUser(ctx, req.UserId, req.TenantId, req.RoleId); err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
 
-	return &pb.AssignRoleToUserResponse{Success: true}, nil
+	return &emptypb.Empty{}, nil
 }
 
-func (h *UserHandler) RevokeRoleFromUser(ctx context.Context, req *pb.RevokeRoleFromUserRequest) (*pb.RevokeRoleFromUserResponse, error) {
+func (h *UserHandler) RevokeRoleFromUser(ctx context.Context, req *pb.RevokeRoleFromUserRequest) (*emptypb.Empty, error) {
 	if err := h.userService.RevokeRoleFromUser(ctx, req.UserId, req.TenantId, req.RoleId); err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
 
-	return &pb.RevokeRoleFromUserResponse{Success: true}, nil
+	return &emptypb.Empty{}, nil
 }
 
 func (h *UserHandler) ListUserRoles(ctx context.Context, req *pb.ListUserRolesRequest) (*pb.ListUserRolesResponse, error) {
@@ -168,13 +194,27 @@ func (h *UserHandler) ListUserRoles(ctx context.Context, req *pb.ListUserRolesRe
 
 // Helper function to convert db.User to pb.User
 func dbUserToProto(user *db.User) *pb.User {
+	// Convert DB UserStatus to proto UserStatus
+	var protoStatus pb.UserStatus
+	switch user.Status {
+	case db.UserStatusPENDINGSETUP:
+		protoStatus = pb.UserStatus_PENDING_SETUP
+	case db.UserStatusPENDINGINVITE:
+		protoStatus = pb.UserStatus_PENDING_INVITE
+	case db.UserStatusACTIVE:
+		protoStatus = pb.UserStatus_USER_ACTIVE
+	case db.UserStatusSUSPENDED:
+		protoStatus = pb.UserStatus_USER_SUSPENDED
+	default:
+		protoStatus = pb.UserStatus_USER_STATUS_UNSPECIFIED
+	}
+	
 	pbUser := &pb.User{
-		Id:            helpers.PgUUIDToString(user.ID),
+		UserId:        helpers.PgUUIDToString(user.ID),
 		FullName:      user.FullName,
 		Email:         user.Email,
-		TenantId:      helpers.PgUUIDToString(user.TenantID),
 		EmailVerified: user.EmailVerified,
-		Status:        string(user.Status),
+		Status:        protoStatus,
 	}
 
 	if user.EmployeeID.Valid {
@@ -198,6 +238,9 @@ func dbUserToProto(user *db.User) *pb.User {
 	if user.UpdatedAt.Valid {
 		pbUser.UpdatedAt = timestamppb.New(user.UpdatedAt.Time)
 	}
+	if user.LastLoginAt.Valid {
+		pbUser.LastLoginAt = timestamppb.New(user.LastLoginAt.Time)
+	}
 
 	return pbUser
 }
@@ -205,7 +248,7 @@ func dbUserToProto(user *db.User) *pb.User {
 // Helper function to convert db.Role to pb.Role
 func dbRoleToProto(role *db.Role) *pb.Role {
 	pbRole := &pb.Role{
-		Id:          helpers.PgUUIDToString(role.ID),
+		RoleId:      helpers.PgUUIDToString(role.ID),
 		TenantId:    helpers.PgUUIDToString(role.TenantID),
 		Name:        role.Name,
 		Permissions: role.Permissions,
@@ -213,12 +256,6 @@ func dbRoleToProto(role *db.Role) *pb.Role {
 
 	if role.Description.Valid {
 		pbRole.Description = role.Description.String
-	}
-	if role.CreatedAt.Valid {
-		pbRole.CreatedAt = timestamppb.New(role.CreatedAt.Time)
-	}
-	if role.UpdatedAt.Valid {
-		pbRole.UpdatedAt = timestamppb.New(role.UpdatedAt.Time)
 	}
 
 	return pbRole

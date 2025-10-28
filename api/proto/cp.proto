@@ -249,15 +249,17 @@ service OrganizationService {
 // --- Designation Messages ---
 message Designation {
   string id = 1;
-  string name = 2;
-  string description = 3;
-  google.protobuf.Timestamp created_at = 4;
-  google.protobuf.Timestamp updated_at = 5;
+  string tenant_id = 2;
+  string name = 3;
+  string description = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
 }
 
 message CreateDesignationRequest {
-  string name = 1;
-  string description = 2;
+  string tenant_id = 1;
+  string name = 2;
+  string description = 3;
 }
 
 message GetDesignationRequest {
@@ -297,15 +299,17 @@ message DeleteDesignationResponse {
 // --- Department Messages ---
 message Department {
   string id = 1;
-  string name = 2;
-  string description = 3;
-  google.protobuf.Timestamp created_at = 4;
-  google.protobuf.Timestamp updated_at = 5;
+  string tenant_id = 2;
+  string name = 3;
+  string description = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
 }
 
 message CreateDepartmentRequest {
-  string name = 1;
-  string description = 2;
+  string tenant_id = 1;
+  string name = 2;
+  string description = 3;
 }
 
 message GetDepartmentRequest {
