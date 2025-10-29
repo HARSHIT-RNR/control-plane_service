@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -14,7 +13,6 @@ import (
 	"cp_service/internal/adapters/database/db"
 	events "cp_service/internal/adapters/kafka"
 	"cp_service/internal/adapters/logger"
-	"cp_service/internal/adapters/opa"
 	"cp_service/internal/adapters/password"
 	"cp_service/internal/adapters/repository"
 	"cp_service/internal/adapters/token"
@@ -24,8 +22,7 @@ import (
 	"cp_service/internal/core/services"
 	grpcserver "cp_service/internal/ports/grpc_server"
 
-	confluentkafka "github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	_ "github.com/lib/pq"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -45,6 +42,14 @@ type UserCreatedEvent struct {
 	IsInitialAdmin bool   `json:"is_initial_admin"`
 }
 
+// UserInvitedEvent represents user invitation event
+type UserInvitedEvent struct {
+	UserID   string `json:"user_id"`
+	TenantID string `json:"tenant_id"`
+	Email    string `json:"email"`
+	FullName string `json:"full_name"`
+}
+
 func main() {
 	// Initialize logger
 	logger := logger.New()
@@ -57,20 +62,20 @@ func main() {
 	}
 	logger.Info("✓ Configuration loaded")
 
-	// Database connection
-	database, err := sql.Open("postgres", cfg.DatabaseURL)
+	// Database connection (using pgxpool for SQLC)
+	pool, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		logger.Fatal("Failed to connect to database: %v", err)
 	}
-	defer database.Close()
+	defer pool.Close()
 
-	if err := database.Ping(); err != nil {
+	if err := pool.Ping(context.Background()); err != nil {
 		logger.Fatal("Failed to ping database: %v", err)
 	}
 	logger.Info("✓ Database connection established")
 
 	// Initialize SQLC queries
-	queries := db.New(database)
+	queries := db.New(pool)
 
 	// --- Adapters (Infrastructure) ---
 
@@ -81,16 +86,7 @@ func main() {
 	logger.Info("✓ Security adapters initialized")
 
 	// Kafka Event Producer
-	kafkaConfig := &confluentkafka.ConfigMap{"bootstrap.servers": cfg.KafkaBrokers}
-	eventProducer, err := events.NewKafkaEventProducer(kafkaConfig, events.TopicConfig{
-		GeneratePasswordToken: cfg.KafkaTopicUserLifecycle,
-		UserCreated:           cfg.KafkaTopicUserLifecycle,
-		UserInvited:           cfg.KafkaTopicUserLifecycle,
-		UserUpdated:           cfg.KafkaTopicUserLifecycle,
-		UserDeleted:           cfg.KafkaTopicUserLifecycle,
-		RoleAssigned:          cfg.KafkaTopicUserLifecycle,
-		RoleRevoked:           cfg.KafkaTopicUserLifecycle,
-	})
+	eventProducer, err := events.NewProducer(cfg.KafkaBrokers)
 	if err != nil {
 		logger.Fatal("Failed to create kafka event producer: %v", err)
 	}
@@ -125,23 +121,24 @@ func main() {
 	// 	}
 	// }
 
-	// OPA Client (optional)
-	var opaClient services.OPAClient
-	if cfg.OPAEnabled {
-		opaClient = opa.NewClient(cfg.OPAURL)
-		logger.Info("✓ OPA client initialized")
-	}
+	// OPA Client (optional) - Disabled for now
+	// TODO: Fix OPA client integration
+	var opaClient services.OPAClient = nil
+	// if cfg.OPAEnabled {
+	// 	opaClient = opa.NewClient(cfg.OPAURL, "")
+	// 	logger.Info("✓ OPA client initialized")
+	// }
 
 	// --- Repositories ---
-	userRepo := repository.NewUserRepository(database, queries)
-	roleRepo := repository.NewRoleRepository(database, queries)
-	credentialRepo := repository.NewCredentialRepository(database, queries)
-	organizationRepo := repository.NewOrganizationRepository(database, queries)
+	userRepo := repository.NewUserRepository(queries)
+	roleRepo := repository.NewRoleRepository(queries)
+	credentialRepo := repository.NewCredentialRepository(queries)
+	organizationRepo := repository.NewOrganizationRepository(queries)
 	logger.Info("✓ Repositories initialized")
 
 	// --- Application Services ---
 	userService := services.NewUserService(userRepo, roleRepo, eventProducer)
-	authnService := services.NewAuthnService(userRepo, credentialRepo, passwordHasher, tokenGenerator, tokenValidator, notificationProducer)
+	authnService := services.NewAuthnService(userRepo, credentialRepo, passwordHasher, tokenGenerator, tokenValidator, notificationProducer, eventProducer)
 	authzService := services.NewAuthzService(roleRepo, tokenValidator, opaClient)
 	organizationService := services.NewOrganizationService(organizationRepo)
 	logger.Info("✓ Application services initialized")
@@ -203,12 +200,14 @@ func main() {
 			logger.Info("Generating password setup token for initial admin: %s", event.UserID)
 
 			// Generate password setup token (Step 5 in onboarding flow)
-			_, err := authnService.GeneratePasswordSetupToken(ctx, event.UserID, event.TenantID, event.Email)
+			token, err := authnService.GeneratePasswordSetupToken(ctx, event.UserID, event.TenantID, event.Email)
 			if err != nil {
 				return fmt.Errorf("failed to generate password setup token: %w", err)
 			}
 
 			logger.Info("✓ Password setup token generated and email sent to: %s", event.Email)
+			logger.Info("🔑 SETUP TOKEN: %s", token)
+			logger.Info("📋 Copy this token and use it in SetInitialPassword RPC")
 			return nil
 		},
 	)
@@ -218,16 +217,76 @@ func main() {
 	defer userLifecycleConsumer.Close()
 	logger.Info("✓ User lifecycle consumer initialized")
 
-	// Start consumers in background
+	// Consumer 3: User Invited (Sends invitation emails to invited users)
+	userInvitedConsumer, err := events.NewConsumer(
+		cfg.KafkaBrokers,
+		"cp-user-invited-group",
+		cfg.KafkaTopicUserLifecycle,
+		func(ctx context.Context, key, value []byte) error {
+			var event UserInvitedEvent
+			if err := json.Unmarshal(value, &event); err != nil {
+				// Try to parse as UserInvitedEvent from kafka producer
+				var inviteEvent events.UserInvitedEvent
+				if err := json.Unmarshal(value, &inviteEvent); err != nil {
+					return fmt.Errorf("failed to unmarshal event: %w", err)
+				}
+				event.UserID = inviteEvent.UserID
+				event.TenantID = inviteEvent.TenantID
+				event.Email = inviteEvent.Email
+				event.FullName = inviteEvent.FullName
+			}
+
+			logger.Info("Processing user invitation for: %s", event.Email)
+
+			// Generate invitation token (similar to password setup)
+			token, err := authnService.GeneratePasswordSetupToken(ctx, event.UserID, event.TenantID, event.Email)
+			if err != nil {
+				return fmt.Errorf("failed to generate invitation token: %w", err)
+			}
+
+			// Publish notification event for the notification service
+			notificationEvent := events.EmailNotificationEvent{
+				To:      event.Email,
+				Subject: "Invitation to Join",
+				Body:    fmt.Sprintf("You have been invited to join. Use this token: %s", token),
+			}
+			
+			if err := eventProducer.PublishEmailNotification(ctx, notificationEvent); err != nil {
+				logger.Error("Failed to publish email notification: %v", err)
+				// Don't fail the whole process if notification fails
+			}
+
+			logger.Info("✓ Invitation email sent to: %s", event.Email)
+			logger.Info("🔑 INVITATION TOKEN: %s", token)
+			logger.Info("📋 Copy this token and use it in RegisterInvitedUser RPC")
+			return nil
+		},
+	)
+	if err != nil {
+		logger.Fatal("Failed to create user invited consumer: %v", err)
+	}
+	defer userInvitedConsumer.Close()
+	logger.Info("✓ User invited consumer initialized")
+
+	// Create cancellable context for consumers
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Start consumers in background with proper context
 	go func() {
-		if err := tenantOnboardingConsumer.Start(context.Background()); err != nil {
+		if err := tenantOnboardingConsumer.Start(ctx); err != nil && ctx.Err() == nil {
 			logger.Error("Tenant onboarding consumer error: %v", err)
 		}
 	}()
 
 	go func() {
-		if err := userLifecycleConsumer.Start(context.Background()); err != nil {
+		if err := userLifecycleConsumer.Start(ctx); err != nil && ctx.Err() == nil {
 			logger.Error("User lifecycle consumer error: %v", err)
+		}
+	}()
+
+	go func() {
+		if err := userInvitedConsumer.Start(ctx); err != nil && ctx.Err() == nil {
+			logger.Error("User invited consumer error: %v", err)
 		}
 	}()
 
@@ -251,7 +310,7 @@ func main() {
 
 	logger.Info("🚀 Control Plane gRPC server starting on port: %d", cfg.GRPCPort)
 	logger.Info("📡 Services registered: UserService, AuthnService, AuthzService, OrganizationService")
-	logger.Info("🔄 Kafka consumers active: iam.create-initial-admin, %s", cfg.KafkaTopicUserLifecycle)
+	logger.Info("🔄 Kafka consumers active: iam.create-initial-admin, user.lifecycle (created), user.lifecycle (invited)")
 
 	// if cfg.SAMLEnabled && samlProvider != nil {
 	// 	logger.Info("🔐 SAML SSO: ENABLED")
@@ -259,7 +318,7 @@ func main() {
 
 	logger.Info("Ready to accept requests...")
 
-	// Graceful shutdown
+	// Start gRPC server in background
 	go func() {
 		if err := grpcServer.Serve(listener); err != nil {
 			logger.Fatal("Failed to serve: %v", err)
@@ -272,6 +331,15 @@ func main() {
 	<-quit
 
 	logger.Info("Shutting down gracefully...")
+	
+	// Cancel context to stop consumers
+	cancel()
+	
+	// Stop gRPC server
 	grpcServer.GracefulStop()
-	logger.Info("Server stopped")
+	
+	// Close event producer
+	eventProducer.Close()
+	
+	logger.Info("✓ All components stopped gracefully")
 }

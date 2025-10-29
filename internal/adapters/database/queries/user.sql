@@ -2,9 +2,9 @@
 
 -- name: CreateUser :one
 INSERT INTO users (
-    full_name, email, tenant_id, employee_id, department_id, designation_id, job_title, status
+    full_name, email, tenant_id, employee_id, department_id, designation_id, phone_number, job_title, status
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8
+    $1, $2, $3, $4, $5, $6, $7, $8, $9
 ) RETURNING *;
 
 -- name: CreateInitialAdmin :one

@@ -75,7 +75,44 @@ func (h *UserHandler) CreateUser(ctx context.Context, req *pb.CreateUserRequest)
 }
 
 func (h *UserHandler) InviteUser(ctx context.Context, req *pb.InviteUserRequest) (*emptypb.Empty, error) {
-	_, err := h.userService.InviteUser(ctx, req.TenantId, req.Email, req.FullName, req.RoleIds)
+	// Build params with all fields including ERP fields
+	tenantID, err := helpers.StringToPgUUID(req.TenantId)
+	if err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+
+	params := db.CreateUserParams{
+		FullName: req.FullName,
+		Email:    req.Email,
+		TenantID: tenantID,
+	}
+
+	// Add ERP fields if provided
+	if req.EmployeeId != "" {
+		params.EmployeeID = helpers.StringToPgText(req.EmployeeId)
+	}
+	if req.DepartmentId != "" {
+		deptID, err := helpers.StringToPgUUID(req.DepartmentId)
+		if err != nil {
+			return nil, helpers.ToGRPCError(err)
+		}
+		params.DepartmentID = deptID
+	}
+	if req.DesignationId != "" {
+		desigID, err := helpers.StringToPgUUID(req.DesignationId)
+		if err != nil {
+			return nil, helpers.ToGRPCError(err)
+		}
+		params.DesignationID = desigID
+	}
+	if req.JobTitle != "" {
+		params.JobTitle = helpers.StringToPgText(req.JobTitle)
+	}
+	if req.PhoneNumber != "" {
+		params.PhoneNumber = helpers.StringToPgText(req.PhoneNumber)
+	}
+
+	_, err = h.userService.InviteUser(ctx, params, req.RoleIds)
 	if err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
@@ -190,6 +227,55 @@ func (h *UserHandler) ListUserRoles(ctx context.Context, req *pb.ListUserRolesRe
 	}
 
 	return &pb.ListUserRolesResponse{Roles: pbRoles}, nil
+}
+
+func (h *UserHandler) CreateRole(ctx context.Context, req *pb.CreateRoleRequest) (*pb.Role, error) {
+	role, err := h.userService.CreateRole(ctx, req.TenantId, req.Name, req.Description, req.Permissions)
+	if err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+
+	return dbRoleToProto(&role), nil
+}
+
+func (h *UserHandler) GetRole(ctx context.Context, req *pb.GetRoleRequest) (*pb.Role, error) {
+	role, err := h.userService.GetRole(ctx, req.RoleId)
+	if err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+
+	return dbRoleToProto(&role), nil
+}
+
+func (h *UserHandler) ListRoles(ctx context.Context, req *pb.ListRolesRequest) (*pb.ListRolesResponse, error) {
+	roles, err := h.userService.ListRoles(ctx, req.TenantId)
+	if err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+
+	pbRoles := make([]*pb.Role, len(roles))
+	for i, role := range roles {
+		pbRoles[i] = dbRoleToProto(&role)
+	}
+
+	return &pb.ListRolesResponse{Roles: pbRoles}, nil
+}
+
+func (h *UserHandler) UpdateRole(ctx context.Context, req *pb.UpdateRoleRequest) (*pb.Role, error) {
+	role, err := h.userService.UpdateRole(ctx, req.RoleId, req.Name, req.Description, req.Permissions)
+	if err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+
+	return dbRoleToProto(&role), nil
+}
+
+func (h *UserHandler) DeleteRole(ctx context.Context, req *pb.DeleteRoleRequest) (*emptypb.Empty, error) {
+	if err := h.userService.DeleteRole(ctx, req.RoleId); err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+
+	return &emptypb.Empty{}, nil
 }
 
 // Helper function to convert db.User to pb.User

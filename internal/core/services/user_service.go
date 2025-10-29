@@ -133,19 +133,18 @@ func (s *UserService) CreateUser(ctx context.Context, params db.CreateUserParams
 }
 
 // InviteUser creates a user with PENDING_INVITE status
-func (s *UserService) InviteUser(ctx context.Context, tenantID, email, fullName string, roleIDs []string) (db.User, error) {
-	// Validate tenant ID
-	if _, err := uuid.Parse(tenantID); err != nil {
-		return db.User{}, fmt.Errorf("invalid tenant ID: %w", err)
+func (s *UserService) InviteUser(ctx context.Context, params db.CreateUserParams, roleIDs []string) (db.User, error) {
+	// Extract tenant ID for validation
+	tenantID, _ := uuid.FromBytes(params.TenantID.Bytes[:])
+	if tenantID == uuid.Nil {
+		return db.User{}, fmt.Errorf("invalid tenant ID")
 	}
 
+	// Set status to PENDING_INVITE
+	params.Status = db.UserStatusPENDINGINVITE
+
 	// Create user with PENDING_INVITE status
-	user, err := s.userRepo.CreateUser(ctx, db.CreateUserParams{
-		FullName: fullName,
-		Email:    email,
-		TenantID: pgUUID(tenantID),
-		Status:   db.UserStatusPENDINGINVITE,
-	})
+	user, err := s.userRepo.CreateUser(ctx, params)
 	if err != nil {
 		return db.User{}, fmt.Errorf("failed to create invited user: %w", err)
 	}
@@ -172,9 +171,9 @@ func (s *UserService) InviteUser(ctx context.Context, tenantID, email, fullName 
 	// Publish UserInvited event
 	event := events.UserInvitedEvent{
 		UserID:   userID.String(),
-		TenantID: tenantID,
-		Email:    email,
-		FullName: fullName,
+		TenantID: tenantID.String(),
+		Email:    params.Email,
+		FullName: params.FullName,
 	}
 
 	if err := s.eventProducer.PublishUserInvited(ctx, event); err != nil {
@@ -331,6 +330,93 @@ func (s *UserService) ListUserRoles(ctx context.Context, userID string) ([]db.Ro
 	}
 
 	return roles, nil
+}
+
+// CreateRole creates a new role
+func (s *UserService) CreateRole(ctx context.Context, tenantID, name, description string, permissions []string) (db.Role, error) {
+	// Validate tenant ID
+	if _, err := uuid.Parse(tenantID); err != nil {
+		return db.Role{}, fmt.Errorf("invalid tenant ID: %w", err)
+	}
+
+	// Create role
+	role, err := s.roleRepo.CreateRole(ctx, db.CreateRoleParams{
+		ID:          pgUUID(uuid.New().String()),
+		TenantID:    pgUUID(tenantID),
+		Name:        name,
+		Description: pgText(description),
+		Permissions: permissions,
+	})
+	if err != nil {
+		return db.Role{}, fmt.Errorf("failed to create role: %w", err)
+	}
+
+	return role, nil
+}
+
+// GetRole retrieves a role by ID
+func (s *UserService) GetRole(ctx context.Context, roleID string) (db.Role, error) {
+	id, err := uuid.Parse(roleID)
+	if err != nil {
+		return db.Role{}, fmt.Errorf("invalid role ID: %w", err)
+	}
+
+	role, err := s.roleRepo.GetRoleByID(ctx, id)
+	if err != nil {
+		return db.Role{}, err
+	}
+
+	return role, nil
+}
+
+// ListRoles retrieves all roles for a tenant
+func (s *UserService) ListRoles(ctx context.Context, tenantID string) ([]db.Role, error) {
+	id, err := uuid.Parse(tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid tenant ID: %w", err)
+	}
+
+	roles, err := s.roleRepo.ListRoles(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return roles, nil
+}
+
+// UpdateRole updates a role
+func (s *UserService) UpdateRole(ctx context.Context, roleID, name, description string, permissions []string) (db.Role, error) {
+	// Validate role ID
+	if _, err := uuid.Parse(roleID); err != nil {
+		return db.Role{}, fmt.Errorf("invalid role ID: %w", err)
+	}
+
+	// Update role
+	role, err := s.roleRepo.UpdateRole(ctx, db.UpdateRoleParams{
+		ID:          pgUUID(roleID),
+		Name:        name,
+		Description: pgText(description),
+		Permissions: permissions,
+	})
+	if err != nil {
+		return db.Role{}, fmt.Errorf("failed to update role: %w", err)
+	}
+
+	return role, nil
+}
+
+// DeleteRole deletes a role
+func (s *UserService) DeleteRole(ctx context.Context, roleID string) error {
+	id, err := uuid.Parse(roleID)
+	if err != nil {
+		return fmt.Errorf("invalid role ID: %w", err)
+	}
+
+	if err := s.roleRepo.DeleteRole(ctx, id); err != nil {
+		return fmt.Errorf("failed to delete role: %w", err)
+	}
+
+	return nil
 }
 
 // Helper function to convert string UUID to pgtype.UUID

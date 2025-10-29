@@ -68,9 +68,9 @@ func (q *Queries) CreateInitialAdmin(ctx context.Context, arg CreateInitialAdmin
 const createUser = `-- name: CreateUser :one
 
 INSERT INTO users (
-    full_name, email, tenant_id, employee_id, department_id, designation_id, job_title, status
+    full_name, email, tenant_id, employee_id, department_id, designation_id, phone_number, job_title, status
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8
+    $1, $2, $3, $4, $5, $6, $7, $8, $9
 ) RETURNING id, full_name, email, tenant_id, employee_id, department_id, designation_id, phone_number, job_title, email_verified, status, created_at, updated_at, last_login_at
 `
 
@@ -81,6 +81,7 @@ type CreateUserParams struct {
 	EmployeeID    pgtype.Text `json:"employee_id"`
 	DepartmentID  pgtype.UUID `json:"department_id"`
 	DesignationID pgtype.UUID `json:"designation_id"`
+	PhoneNumber   pgtype.Text `json:"phone_number"`
 	JobTitle      pgtype.Text `json:"job_title"`
 	Status        UserStatus  `json:"status"`
 }
@@ -94,6 +95,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		arg.EmployeeID,
 		arg.DepartmentID,
 		arg.DesignationID,
+		arg.PhoneNumber,
 		arg.JobTitle,
 		arg.Status,
 	)

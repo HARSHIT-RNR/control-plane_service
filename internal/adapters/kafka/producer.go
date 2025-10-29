@@ -86,7 +86,7 @@ type UserLoginEvent struct {
 
 // EmailNotificationEvent - Published to notifications.send for email delivery
 type EmailNotificationEvent struct {
-	To      string `json:"to"`
+	To      string `json:"email"` // Changed from "to" to "email" to match notification service
 	Subject string `json:"subject"`
 	Body    string `json:"body"`
 }
