@@ -5,3 +5,4 @@ ERP
 2. Authentication service
 3. Authorization service
 4. RBAC
+5. organization service (Department or Designation)
