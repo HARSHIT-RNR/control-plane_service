@@ -2,30 +2,6 @@
 
 A production-ready backend microservice for ERP system control plane featuring user management, RBAC, authentication, and authorization.
 
-## 🏗️ Architecture
-
-**Hexagonal Architecture (Ports & Adapters)**
-```
-├── Domain Layer (Business Entities)
-│   ├── User, Role, Department, Designation
-│   └── Pure business logic, framework-agnostic
-│
-├── Application Layer (Use Cases)
-│   ├── UserService, AuthnService, AuthzService
-│   └── Orchestrates business flows
-│
-├── Ports (Interfaces)
-│   ├── Repository interfaces
-│   └── Service interfaces
-│
-└── Adapters (Infrastructure)
-    ├── Repositories (PostgreSQL via SQLC)
-    ├── gRPC Handlers
-    ├── Kafka Producers/Consumers
-    ├── OPA Client (Authorization)
-    └── JWT Token Manager
-```
-
 ## 🚀 Features
 
 ### 1. **User Management Service**
@@ -74,47 +50,6 @@ A production-ready backend microservice for ERP system control plane featuring u
 - SQLC (for code generation)
 - Protocol Buffers compiler
 
-## 🛠️ Setup
-
-### 1. Install Dependencies
-
-```bash
-go mod download
-```
-
-### 2. Setup Database
-
-```bash
-# Start PostgreSQL
-docker-compose up -d postgres
-
-# Run migrations
-psql -U postgres -d cp_db -f internal/adapters/database/migration/001_init.up.sql
-```
-
-### 3. Generate Code
-
-```bash
-# Generate SQLC code
-sqlc generate
-
-# Generate gRPC code (if proto files changed)
-protoc --go_out=. --go-grpc_out=. api/proto/*.proto
-```
-
-### 4. Configure Environment
-
-```bash
-cp .env.example .env
-# Edit .env with your configuration
-```
-
-### 5. Run the Service
-
-```bash
-go run cmd/main_new.go
-```
-
 ## 📡 gRPC Services
 
 ### UserService
@@ -159,20 +94,8 @@ go run cmd/main_new.go
 - **JWT Tokens**: HS256 signing, short-lived access tokens
 - **Token Refresh**: Separate refresh token flow
 - **Permission Model**: Fine-grained resource:action permissions
-- **OPA Integration**: Policy-based authorization
+// - **OPA Integration**: Policy-based authorization
 
-## 📊 Database Schema
-
-```sql
-Tables:
-- users (id, full_name, email, tenant_id, status, ...)
-- roles (id, tenant_id, name, permissions[])
-- user_roles (user_id, role_id, tenant_id)
-- credentials (user_id, password_hash)
-- tokens (hash, user_id, expiry, scope)
-- departments (id, name, tenant_id)
-- designations (id, name, tenant_id)
-```
 
 ## 🎯 Design Patterns
 
@@ -182,77 +105,3 @@ Tables:
 - **Event Sourcing**: Domain events for audit trail
 - **CQRS Lite**: Separate read/write optimizations
 
-## 🔧 Development
-
-### Running Tests
-```bash
-go test ./...
-```
-
-### Code Generation
-```bash
-# After modifying SQL queries
-sqlc generate
-
-# After modifying proto files
-protoc --go_out=. --go-grpc_out=. api/proto/*.proto
-```
-
-### gRPC Testing
-```bash
-# Using grpcurl
-grpcurl -plaintext localhost:50051 list
-grpcurl -plaintext -d '{"email":"admin@example.com","password":"pass123","tenant_identifier":"tenant-1"}' localhost:50051 cp.AuthnService/Login
-```
-
-## 📦 Project Structure
-
-```
-cp_service/
-├── api/proto/              # gRPC protocol definitions
-├── cmd/                    # Application entry points
-├── internal/
-│   ├── user/
-│   │   ├── domain/        # User entities
-│   │   ├── application/   # UserService
-│   │   └── ports/         # Repository interfaces
-│   ├── authn/             # Authentication domain
-│   ├── authz/             # Authorization domain
-│   ├── organization/      # Org structure domain
-│   └── adapters/
-│       ├── postgres/      # Repository implementations
-│       ├── kafka/         # Event producers/consumers
-│       ├── opa/           # OPA client
-│       └── ports/grpc/    # gRPC handlers
-├── adapters/
-│   ├── password/          # Password hashing
-│   └── token/             # JWT generation/validation
-└── config/                # Configuration management
-```
-
-## 🚀 Deployment
-
-### Docker
-```bash
-docker-compose up -d
-```
-
-### Kubernetes
-```bash
-kubectl apply -f k8s/
-```
-
-## 🔍 Monitoring & Observability
-
-- Structured logging throughout
-- gRPC reflection enabled
-- Health checks on all services
-- Kafka consumer lag monitoring
-
-## 📝 License
-
-Proprietary - Internal ERP System
-
-## 👥 Team
-
-Backend Control Plane Team
