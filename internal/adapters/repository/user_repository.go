@@ -102,6 +102,17 @@ func (r *userRepository) UpdateLastLogin(ctx context.Context, userID uuid.UUID) 
 	return nil
 }
 
+func (r *userRepository) UpdateEmailVerified(ctx context.Context, userID uuid.UUID, verified bool) error {
+	err := r.queries.UpdateEmailVerified(ctx, db.UpdateEmailVerifiedParams{
+		ID:            pgUUID(userID),
+		EmailVerified: verified,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to update email verified status: %w", err)
+	}
+	return nil
+}
+
 func (r *userRepository) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	err := r.queries.DeleteUser(ctx, pgUUID(id))
 	if err != nil {

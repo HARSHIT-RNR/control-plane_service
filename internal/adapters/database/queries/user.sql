@@ -39,7 +39,8 @@ SET
     employee_id = $3,
     department_id = $4,
     designation_id = $5,
-    job_title = $6
+    job_title = $6,
+    phone_number = $7
 WHERE id = $1
 RETURNING *;
 
@@ -61,6 +62,11 @@ WHERE id = $1;
 -- name: UpdateLastLogin :exec
 UPDATE users
 SET last_login_at = NOW()
+WHERE id = $1;
+
+-- name: UpdateEmailVerified :exec
+UPDATE users
+SET email_verified = $2, updated_at = NOW()
 WHERE id = $1;
 
 -- name: GetUserByEmail :one

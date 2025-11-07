@@ -95,7 +95,7 @@ func (s *AuthnService) GeneratePasswordSetupToken(ctx context.Context, userID, t
 	}
 
 	// Send email notification with setup link
-	setupURL := fmt.Sprintf("https://app.yourcompany.com/auth/setup-password?token=%s", token)
+	setupURL := fmt.Sprintf("https://app.erp.com/setup-password?token=%s", token)
 	subject := "Set Your Password - Welcome to the Platform"
 	body := fmt.Sprintf(`
 Hello,
@@ -485,6 +485,134 @@ func (s *AuthnService) ConfirmPassword(ctx context.Context, userID, password str
 
 	if err := s.passwordHasher.Compare(credential.PasswordHash, password); err != nil {
 		return fmt.Errorf("incorrect password: %w", err)
+	}
+
+	return nil
+}
+
+// RequestEmailVerification sends an email verification link to the user
+func (s *AuthnService) RequestEmailVerification(ctx context.Context, userID string) error {
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		return fmt.Errorf("invalid user ID: %w", err)
+	}
+
+	// Get user details
+	user, err := s.userRepo.GetUserByID(ctx, uid)
+	if err != nil {
+		return fmt.Errorf("user not found: %w", err)
+	}
+
+	// Check if email is already verified
+	if user.EmailVerified {
+		return fmt.Errorf("email already verified")
+	}
+
+	// Generate email verification token (similar to password reset token)
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return fmt.Errorf("failed to generate token: %w", err)
+	}
+
+	token := base64.URLEncoding.EncodeToString(tokenBytes)
+	tokenHash := sha256.Sum256(tokenBytes)
+
+	// Store verification token in database with 24-hour expiry
+	err = s.credentialRepo.CreateToken(ctx, db.CreateTokenParams{
+		Hash:   tokenHash[:],
+		UserID: user.ID,
+		Expiry: pgtype.Timestamptz{
+			Time:  time.Now().Add(24 * time.Hour),
+			Valid: true,
+		},
+		Scope: db.TokenScopeEMAILVERIFICATION,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to store verification token: %w", err)
+	}
+
+	// Send verification email
+	verificationURL := fmt.Sprintf("https://app.erp.com/verify-email?token=%s", token)
+	subject := "Verify Your Email Address"
+	body := fmt.Sprintf(`
+Hello,
+
+Please verify your email address by clicking the link below:
+
+%s
+
+This link will expire in 24 hours.
+
+If you did not request this verification, please ignore this email.
+
+Best regards,
+Your ERP Platform Team
+`, verificationURL)
+
+	if err := s.notificationProd.SendEmail(ctx, user.Email, subject, body); err != nil {
+		return fmt.Errorf("failed to send verification email: %w", err)
+	}
+
+	return nil
+}
+
+// VerifyEmail verifies a user's email address using the verification token
+func (s *AuthnService) VerifyEmail(ctx context.Context, verificationToken string) error {
+	// Decode and hash the token
+	tokenBytes, decodeErr := base64.URLEncoding.DecodeString(verificationToken)
+	if decodeErr != nil {
+		return fmt.Errorf("invalid token format: %w", decodeErr)
+	}
+
+	tokenHash := sha256.Sum256(tokenBytes)
+
+	// Retrieve token from database
+	storedToken, err := s.credentialRepo.GetToken(ctx, tokenHash[:])
+	if err != nil {
+		return fmt.Errorf("invalid or expired verification token: %w", err)
+	}
+
+	// Check expiry
+	if storedToken.Expiry.Time.Before(time.Now()) {
+		return fmt.Errorf("verification token has expired")
+	}
+
+	// Verify token scope
+	if storedToken.Scope != db.TokenScopeEMAILVERIFICATION {
+		return fmt.Errorf("invalid token scope")
+	}
+
+	// Get user ID from token
+	userID, _ := uuid.FromBytes(storedToken.UserID.Bytes[:])
+
+	// Update user's email_verified field to TRUE
+	err = s.userRepo.UpdateEmailVerified(ctx, userID, true)
+	if err != nil {
+		return fmt.Errorf("failed to update email verification status: %w", err)
+	}
+	
+	// Retrieve user for event publishing
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Delete the used token (one-time use)
+	if err := s.credentialRepo.DeleteToken(ctx, tokenHash[:]); err != nil {
+		return fmt.Errorf("failed to delete token: %w", err)
+	}
+
+	// Publish user updated event to track email verification
+	if s.eventProducer != nil {
+		tenantID, _ := uuid.FromBytes(user.TenantID.Bytes[:])
+		event := events.UserUpdatedEvent{
+			UserID:   userID.String(),
+			TenantID: tenantID.String(),
+		}
+		if err := s.eventProducer.PublishUserUpdated(ctx, event); err != nil {
+			// Log but don't fail the verification
+			fmt.Printf("warning: failed to publish user updated event: %v\n", err)
+		}
 	}
 
 	return nil

@@ -154,3 +154,19 @@ func (h *AuthnHandler) GeneratePasswordSetupToken(ctx context.Context, req *pb.G
 
 	return &pb.GeneratePasswordSetupTokenResponse{SetupToken: token}, nil
 }
+
+func (h *AuthnHandler) RequestEmailVerification(ctx context.Context, req *pb.RequestEmailVerificationRequest) (*emptypb.Empty, error) {
+	if err := h.authnService.RequestEmailVerification(ctx, req.UserId); err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+
+	return &emptypb.Empty{}, nil
+}
+
+func (h *AuthnHandler) VerifyEmail(ctx context.Context, req *pb.VerifyEmailRequest) (*emptypb.Empty, error) {
+	if err := h.authnService.VerifyEmail(ctx, req.VerificationToken); err != nil {
+		return nil, helpers.ToGRPCError(err)
+	}
+
+	return &emptypb.Empty{}, nil
+}

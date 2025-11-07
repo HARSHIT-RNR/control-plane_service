@@ -18,6 +18,7 @@ type UserRepository interface {
 	ListUsers(ctx context.Context, tenantID uuid.UUID, limit, offset int32) ([]db.User, error)
 	UpdateUser(ctx context.Context, params db.UpdateUserParams) (db.User, error)
 	UpdateUserStatus(ctx context.Context, userID uuid.UUID, status db.UserStatus) error
+	UpdateEmailVerified(ctx context.Context, userID uuid.UUID, verified bool) error
 	UpdateLastLogin(ctx context.Context, userID uuid.UUID) error
 	DeleteUser(ctx context.Context, id uuid.UUID) error
 	ActivateInvitedUser(ctx context.Context, params db.ActivateInvitedUserParams) error

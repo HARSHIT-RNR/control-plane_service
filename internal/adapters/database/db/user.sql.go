@@ -270,6 +270,22 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 	return items, nil
 }
 
+const updateEmailVerified = `-- name: UpdateEmailVerified :exec
+UPDATE users
+SET email_verified = $2, updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateEmailVerifiedParams struct {
+	ID            pgtype.UUID `json:"id"`
+	EmailVerified bool        `json:"email_verified"`
+}
+
+func (q *Queries) UpdateEmailVerified(ctx context.Context, arg UpdateEmailVerifiedParams) error {
+	_, err := q.db.Exec(ctx, updateEmailVerified, arg.ID, arg.EmailVerified)
+	return err
+}
+
 const updateLastLogin = `-- name: UpdateLastLogin :exec
 UPDATE users
 SET last_login_at = NOW()
@@ -288,7 +304,8 @@ SET
     employee_id = $3,
     department_id = $4,
     designation_id = $5,
-    job_title = $6
+    job_title = $6,
+    phone_number = $7
 WHERE id = $1
 RETURNING id, full_name, email, tenant_id, employee_id, department_id, designation_id, phone_number, job_title, email_verified, status, created_at, updated_at, last_login_at
 `
@@ -300,6 +317,7 @@ type UpdateUserParams struct {
 	DepartmentID  pgtype.UUID `json:"department_id"`
 	DesignationID pgtype.UUID `json:"designation_id"`
 	JobTitle      pgtype.Text `json:"job_title"`
+	PhoneNumber   pgtype.Text `json:"phone_number"`
 }
 
 func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error) {
@@ -310,6 +328,7 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (User, e
 		arg.DepartmentID,
 		arg.DesignationID,
 		arg.JobTitle,
+		arg.PhoneNumber,
 	)
 	var i User
 	err := row.Scan(

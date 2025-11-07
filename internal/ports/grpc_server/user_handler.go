@@ -37,7 +37,7 @@ func (h *UserHandler) CreateUser(ctx context.Context, req *pb.CreateUserRequest)
 	if err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
-	
+
 	params := db.CreateUserParams{
 		FullName: req.FullName,
 		Email:    req.Email,
@@ -134,7 +134,7 @@ func (h *UserHandler) ListUsers(ctx context.Context, req *pb.ListUsersRequest) (
 	if limit == 0 {
 		limit = 50
 	}
-	
+
 	// TODO: Handle page_token for pagination
 	offset := int32(0)
 
@@ -156,7 +156,7 @@ func (h *UserHandler) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest)
 	if err != nil {
 		return nil, helpers.ToGRPCError(err)
 	}
-	
+
 	params := db.UpdateUserParams{
 		ID:       userID,
 		FullName: req.FullName,
@@ -181,6 +181,10 @@ func (h *UserHandler) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest)
 			return nil, helpers.ToGRPCError(err)
 		}
 		params.DesignationID = desigID
+	}
+
+	if req.PhoneNumber != "" {
+		params.PhoneNumber = helpers.StringToPgText(req.PhoneNumber)
 	}
 
 	user, err := h.userService.UpdateUser(ctx, params)
@@ -294,7 +298,7 @@ func dbUserToProto(user *db.User) *pb.User {
 	default:
 		protoStatus = pb.UserStatus_USER_STATUS_UNSPECIFIED
 	}
-	
+
 	pbUser := &pb.User{
 		UserId:        helpers.PgUUIDToString(user.ID),
 		FullName:      user.FullName,

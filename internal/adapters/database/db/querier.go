@@ -59,6 +59,7 @@ type Querier interface {
 	UpdateCredential(ctx context.Context, arg UpdateCredentialParams) error
 	UpdateDepartment(ctx context.Context, arg UpdateDepartmentParams) (Department, error)
 	UpdateDesignation(ctx context.Context, arg UpdateDesignationParams) (Designation, error)
+	UpdateEmailVerified(ctx context.Context, arg UpdateEmailVerifiedParams) error
 	UpdateLastLogin(ctx context.Context, id pgtype.UUID) error
 	UpdateRole(ctx context.Context, arg UpdateRoleParams) (Role, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
